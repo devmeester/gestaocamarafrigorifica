@@ -5,8 +5,8 @@ import pandas as pd
 import os
 
 # Configurações principais
-EXCEL_FILE = "produtos.xlsx"
-DB_FILE = "camara.db"
+DB_EXCEL = "produtos.xlsx"
+DB = "camara.db"
 
 # Classe Produto
 class Produto:
@@ -16,19 +16,19 @@ class Produto:
         self.estoque = estoque
         self.observacoes = observacoes
 
-# Classe principal do sistema
-class CamaraFrigorifica:
+# Classe principal
+class GestaoCamara:
     def __init__(self, root):
         self.root = root
         self.root.title("Gestão CAX - C5")
         self.andar_atual = 2  # Começa no superior
         self.db_init()
         self.carregar_excel()
-        self.criar_interface()
+        self.interface()
 
     # Criar banco de dados
     def db_init(self):
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS paletes (
@@ -46,28 +46,28 @@ class CamaraFrigorifica:
 
     # Carregar dados do Excel
     def carregar_excel(self):
-        if not os.path.exists(EXCEL_FILE):
+        if not os.path.exists(DB_EXCEL):
             self.df_lotes = pd.DataFrame(columns=["Lote", "Produto", "Estoque", "Observacoes"])
             return
-        self.df_lotes = pd.read_excel(EXCEL_FILE, dtype=str).fillna("")
+        self.df_lotes = pd.read_excel(DB_EXCEL, dtype=str).fillna("")
 
     # Gerar nome do rack com base na posição
-    def gerar_nome_rack(self, andar, coluna, linha):
+    def nome_racks(self, andar, coluna, linha):
         if andar == 2:  # Superior - blocos de 3
             bloco = 4 - ((linha - 1) // 3)
         else:  # Inferior - blocos de 2
             bloco = 4 - ((linha - 1) // 2)
         return f"R{coluna}{andar}{bloco}"
 
-    # Criar interface principal
-    def criar_interface(self):
+    # Interface
+    def interface(self):
         self.frame_top = tk.Frame(self.root)
         self.frame_top.pack(pady=10)
         
         self.lbl_andar = tk.Label(self.frame_top, text=f"{'Segundo Andar' if self.andar_atual == 2 else 'Primeiro Andar'}", font=("Arial", 12, "bold"))
         self.lbl_andar.pack(side=tk.LEFT, padx=5)
 
-        btn_trocar = tk.Button(self.frame_top, text="Alternar Andar", command=self.alternar_andar)
+        btn_trocar = tk.Button(self.frame_top, text="Alternar Andar", command=self.mudar_andar)
         btn_trocar.pack(side=tk.LEFT, padx=5)
 
         btn_pesquisar = tk.Button(self.frame_top, text="Pesquisar", command=self.pesquisar_produto)
@@ -81,17 +81,17 @@ class CamaraFrigorifica:
 
         self.desenhar_mapa()
 
-    # Alternar entre andares
-    def alternar_andar(self):
+    # Mudar andares
+    def mudar_andar(self):
         self.andar_atual = 1 if self.andar_atual == 2 else 2
         self.lbl_andar.config(text=f"{'Segundo Andar' if self.andar_atual == 2 else 'Primeiro Andar'}")
         for widget in self.frame_mapa.winfo_children():
             widget.destroy()
         self.desenhar_mapa()
 
-    # Desenhar mapa dos racks
+    # Desenhar mapa 
     def desenhar_mapa(self):
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("SELECT posicao, lote, produto FROM paletes")
         ocupadas = {pos: (lote, produto) for pos, lote, produto in cur.fetchall()}
@@ -104,7 +104,7 @@ class CamaraFrigorifica:
 
         for c in range(1, colunas + 1):
             for l in range(1, linhas + 1):
-                rack_nome = self.gerar_nome_rack(self.andar_atual, c, l)
+                rack_nome = self.nome_racks(self.andar_atual, c, l)
                 pos_id = f"{rack_nome}_{l}"
 
                 # Cor do bloco alternada
@@ -132,7 +132,7 @@ class CamaraFrigorifica:
             return
 
         # Verificar se lote já está alocado
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("SELECT posicao FROM paletes WHERE lote = ?", (lote,))
         if cur.fetchone():
@@ -143,7 +143,7 @@ class CamaraFrigorifica:
         # Buscar no Excel
         produto_info = self.df_lotes[self.df_lotes["Lote"] == lote]
         if produto_info.empty:
-            # Cadastro manual
+            # Registo manual
             p = Produto(lote, nome="", estoque="", observacoes="")
         else:
             produto = produto_info.iloc[0]
@@ -156,12 +156,12 @@ class CamaraFrigorifica:
         conn.commit()
         conn.close()
 
-        self.alternar_andar()
-        self.alternar_andar()
+        self.mudar_andar()
+        self.mudar_andar()
 
-    # Mostrar detalhes do produto
+    # Mostrar detalhes
     def mostrar_detalhes(self, posicao):
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("SELECT lote, produto, estoque, observacoes FROM paletes WHERE posicao = ?", (posicao,))
         dados = cur.fetchone()
@@ -173,18 +173,18 @@ class CamaraFrigorifica:
         lote, produto, estoque, obs = dados
         msg = f"Lote: {lote}\nProduto: {produto}\nEstoque: {estoque}\nObservações: {obs}"
         if messagebox.askyesno("Detalhes", msg + "\n\nDeseja remover este lote?"):
-            self.desalocar_lote(posicao)
+            self.remover_lote(posicao)
 
-    # Desalocar lote
-    def desalocar_lote(self, posicao):
-        conn = sqlite3.connect(DB_FILE)
+    # Remover lote
+    def remover_lote(self, posicao):
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("DELETE FROM paletes WHERE posicao = ?", (posicao,))
         conn.commit()
         conn.close()
 
-        self.alternar_andar()
-        self.alternar_andar()
+        self.mudar_andar()
+        self.mudar_andar()
 
     # Pesquisa por lote ou nome
     def pesquisar_produto(self):
@@ -193,7 +193,7 @@ class CamaraFrigorifica:
             return
         termo = termo.lower()
 
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
         cur.execute("SELECT posicao, lote, produto FROM paletes")
         resultados = [(p, l, prod) for p, l, prod in cur.fetchall()
@@ -215,7 +215,7 @@ class CamaraFrigorifica:
             messagebox.showwarning("Aviso", "O arquivo de Excel está vazio ou não foi encontrado.")
             return
 
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB)
         cur = conn.cursor()
 
         cur.execute("SELECT id, lote FROM paletes")
@@ -236,13 +236,13 @@ class CamaraFrigorifica:
         conn.commit()
         conn.close()
 
-        self.alternar_andar()
-        self.alternar_andar()
+        self.mudar_andar()
+        self.mudar_andar()
 
         messagebox.showinfo("Atualização Concluída", f"{alterados} registros foram atualizados com sucesso!")
 
 # Executar o programa
 if __name__ == "__main__":
     root = tk.Tk()
-    app = CamaraFrigorifica(root)
+    app = GestaoCamara(root)
     root.mainloop()
